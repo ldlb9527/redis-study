@@ -269,7 +269,7 @@ sds _sdsMakeRoomFor(sds s, size_t addlen, int greedy) {
             newlen += SDS_MAX_PREALLOC;
     }
 
-    type = sdsReqType(newlen);/* 获取新长度的类型 */
+    type = sdsReqType(newlen);/* 获取新长度对应的类型 */
 
     /* Don't use type 5: the user is appending to the string and type 5 is
      * not able to remember empty space, so sdsMakeRoomFor() must be called

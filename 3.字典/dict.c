@@ -55,7 +55,9 @@
  * Note that even when dict_can_resize is set to 0, not all resizes are
  * prevented: a hash table is still allowed to grow if the ratio between
  * the number of elements and the buckets > dict_force_resize_ratio. */
+/* 字典启用rehash的标识 */
 static int dict_can_resize = 1;
+/* 强制rehash的比率 */
 static unsigned int dict_force_resize_ratio = 5;
 
 /* -------------------------- private prototypes ---------------------------- */
@@ -102,6 +104,7 @@ static void _dictReset(dict *d, int htidx)
 }
 
 /* Create a new hash table */
+/* 创建一个hash表 */
 dict *dictCreate(dictType *type)
 {
     dict *d = zmalloc(sizeof(*d));
@@ -111,6 +114,7 @@ dict *dictCreate(dictType *type)
 }
 
 /* Initialize the hash table */
+/* 初始化hash表 */
 int _dictInit(dict *d, dictType *type)
 {
     _dictReset(d, 0);
@@ -123,12 +127,13 @@ int _dictInit(dict *d, dictType *type)
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
+ /* 缩容字典， 让它的已用节点数和字典大小之间的比率接近 1:1 */
 int dictResize(dict *d)
 {
     unsigned long minimal;
 
-    if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR;
-    minimal = d->ht_used[0];
+    if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR; /* 返回 DICT_ERR 表示字典已经在 rehash ，或者 dict_can_resize 为假 */
+    minimal = d->ht_used[0]; /* 让比率接近 1：1 所需要的最少节点数量 */
     if (minimal < DICT_HT_INITIAL_SIZE)
         minimal = DICT_HT_INITIAL_SIZE;
     return dictExpand(d, minimal);
@@ -137,13 +142,14 @@ int dictResize(dict *d)
 /* Expand or create the hash table,
  * when malloc_failed is non-NULL, it'll avoid panic if malloc fails (in which case it'll be set to 1).
  * Returns DICT_OK if expand was performed, and DICT_ERR if skipped. */
+ /* 扩展hash表 */
 int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 {
     if (malloc_failed) *malloc_failed = 0;
 
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
-    if (dictIsRehashing(d) || d->ht_used[0] > size)
+    if (dictIsRehashing(d) || d->ht_used[0] > size) /* 正在进行rehash或大小小于hash表已存在的元素 */
         return DICT_ERR;
 
     /* the new hash table */
@@ -201,16 +207,19 @@ int dictTryExpand(dict *d, unsigned long size) {
 
 /* Performs N steps of incremental rehashing. Returns 1 if there are still
  * keys to move from the old to the new hash table, otherwise 0 is returned.
+ *执行 N 步渐进式 rehash，返回 1 表示仍有键需要从 0 号哈希表移动到 1 号哈希表，返回 0 则表示所有键都已经迁移完毕
  *
  * Note that a rehashing step consists in moving a bucket (that may have more
  * than one key as we use chaining) from the old to the new hash table, however
  * since part of the hash table may be composed of empty spaces, it is not
  * guaranteed that this function will rehash even a single bucket, since it
  * will visit at max N*10 empty buckets in total, otherwise the amount of
- * work it does would be unbound and the function may block for a long time. */
+ * work it does would be unbound and the function may block for a long time.
+ * 每步 rehash 都是以一个哈希表索引（桶）作为单位的，一个桶里可能会有多个节点，被 rehash 的桶里的所有节点都会被移动到新哈希表
+  */
 int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
-    if (!dictIsRehashing(d)) return 0;
+    if (!dictIsRehashing(d)) return 0; /* 正在rehash */
 
     while(n-- && d->ht_used[0] != 0) {
         dictEntry *de, *nextde;
@@ -224,7 +233,7 @@ int dictRehash(dict *d, int n) {
         }
         de = d->ht_table[0][d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
-        while(de) {
+        while(de) {  /* 所有key从0号hash表移动到1号hash表 */
             uint64_t h;
 
             nextde = de->next;
@@ -241,10 +250,10 @@ int dictRehash(dict *d, int n) {
     }
 
     /* Check if we already rehashed the whole table... */
-    if (d->ht_used[0] == 0) {
+    if (d->ht_used[0] == 0) { /* 0表示未使用，释放空间 */
         zfree(d->ht_table[0]);
         /* Copy the new ht onto the old one */
-        d->ht_table[0] = d->ht_table[1];
+        d->ht_table[0] = d->ht_table[1]; /* 1号hash表复制到0号位置 */
         d->ht_used[0] = d->ht_used[1];
         d->ht_size_exp[0] = d->ht_size_exp[1];
         _dictReset(d, 1);
@@ -256,6 +265,7 @@ int dictRehash(dict *d, int n) {
     return 1;
 }
 
+/* 返回毫秒时间戳 */
 long long timeInMilliseconds(void) {
     struct timeval tv;
 
@@ -266,6 +276,7 @@ long long timeInMilliseconds(void) {
 /* Rehash in ms+"delta" milliseconds. The value of "delta" is larger 
  * than 0, and is smaller than 1 in most cases. The exact upper bound 
  * depends on the running time of dictRehash(d,100).*/
+ /* 在给定毫秒数内，以 100 步为单位，对字典进行 rehash 。返回rehash的个数 */
 int dictRehashMilliseconds(dict *d, int ms) {
     if (d->pauserehash > 0) return 0;
 
@@ -292,11 +303,13 @@ static void _dictRehashStep(dict *d) {
 }
 
 /* Add an element to the target hash table */
+/* 添加一个元素到hash表 */
 int dictAdd(dict *d, void *key, void *val)
 {
+    /* 尝试添加键到字典，并返回包含了这个键的新哈希节点，O(n) */
     dictEntry *entry = dictAddRaw(d,key,NULL);
 
-    if (!entry) return DICT_ERR;
+    if (!entry) return DICT_ERR; /* 键已存在，添加失败 */
     dictSetVal(d, entry, val);
     return DICT_OK;
 }
@@ -319,6 +332,7 @@ int dictAdd(dict *d, void *key, void *val)
  *
  * If key was added, the hash entry is returned to be manipulated by the caller.
  */
+ /* 尝试将键插入到字典中,如果键已经在字典存在，那么返回 NULL,如果键不存在，那么程序创建新的哈希节点,将节点和键关联，并插入到字典，然后返回节点本身 */
 dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 {
     long index;
@@ -356,6 +370,7 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
  * Return 1 if the key was added from scratch, 0 if there was already an
  * element with such key and dictReplace() just performed a value update
  * operation. */
+ /* 字典添加或覆盖元素，新添加返回1 已存在覆盖返回0 */
 int dictReplace(dict *d, void *key, void *val)
 {
     dictEntry *entry, *existing, auxentry;
@@ -373,6 +388,7 @@ int dictReplace(dict *d, void *key, void *val)
      * as the previous one. In this context, think to reference counting,
      * you want to increment (set), and then decrement (free), and not the
      * reverse. */
+    /* 覆盖旧值，并释放空间 */
     auxentry = *existing;
     dictSetVal(d, existing, val);
     dictFreeVal(d, &auxentry);
@@ -386,6 +402,7 @@ int dictReplace(dict *d, void *key, void *val)
  * existing key is returned.)
  *
  * See dictAddRaw() for more information. */
+ /* 添加一个元素，存在则不能添加,返回已存在的 */
 dictEntry *dictAddOrFind(dict *d, void *key) {
     dictEntry *entry, *existing;
     entry = dictAddRaw(d,key,&existing);
@@ -395,6 +412,7 @@ dictEntry *dictAddOrFind(dict *d, void *key) {
 /* Search and remove an element. This is a helper function for
  * dictDelete() and dictUnlink(), please check the top comment
  * of those functions. */
+ /* 搜索并删除元素，nofree决定是否调用键和值的释放函数， 0 表示调用，1 表示不调用 */
 static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
     uint64_t h, idx;
     dictEntry *he, *prevHe;
@@ -433,6 +451,7 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
 
 /* Remove an element, returning DICT_OK on success or DICT_ERR if the
  * element was not found. */
+ /* 根据key删除一个元素，并调用键和值的释放函数 */
 int dictDelete(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
 }
@@ -458,12 +477,15 @@ int dictDelete(dict *ht, const void *key) {
  * // Do something with entry
  * dictFreeUnlinkedEntry(entry); // <- This does not need to lookup again.
  */
+ /* 从表中删除元素，但不实际释放，如果找到元素（并与表解除链接），并且用户以后应该调用'dictFreeUnlinkEntry（）以释放它
+  * 希望在实际删除条目之前使用其值 */
 dictEntry *dictUnlink(dict *d, const void *key) {
     return dictGenericDelete(d,key,1);
 }
 
 /* You need to call this function to really free the entry after a call
  * to dictUnlink(). It's safe to call this function with 'he' = NULL. */
+ /* 释放节点空间 */
 void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     if (he == NULL) return;
     dictFreeKey(d, he);
@@ -472,6 +494,7 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
 }
 
 /* Destroy an entire dictionary */
+/* 删除哈希表上的所有节点，并重置哈希表的各项属性 */
 int _dictClear(dict *d, int htidx, void(callback)(dict*)) {
     unsigned long i;
 
@@ -499,6 +522,7 @@ int _dictClear(dict *d, int htidx, void(callback)(dict*)) {
 }
 
 /* Clear & Release the hash table */
+/* 删除并释放整个字典 O(n)*/
 void dictRelease(dict *d)
 {
     _dictClear(d,0,NULL);
@@ -506,6 +530,7 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
+/* 返回字典中包含键 key 的节点,找不到返回NULL */
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;
@@ -527,6 +552,7 @@ dictEntry *dictFind(dict *d, const void *key)
     return NULL;
 }
 
+/* * 获取包含给定键的节点的val */
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
 
@@ -572,6 +598,7 @@ unsigned long long dictFingerprint(dict *d) {
     return hash;
 }
 
+/* 获取一个字段迭代器 */
 dictIterator *dictGetIterator(dict *d)
 {
     dictIterator *iter = zmalloc(sizeof(*iter));
@@ -579,12 +606,12 @@ dictIterator *dictGetIterator(dict *d)
     iter->d = d;
     iter->table = 0;
     iter->index = -1;
-    iter->safe = 0;
+    iter->safe = 0; /* 表示不是一个安全迭代器 */
     iter->entry = NULL;
     iter->nextEntry = NULL;
     return iter;
 }
-
+/* 获取一个安全的字典迭代器 */
 dictIterator *dictGetSafeIterator(dict *d) {
     dictIterator *i = dictGetIterator(d);
 
@@ -598,8 +625,8 @@ dictEntry *dictNext(dictIterator *iter)
         if (iter->entry == NULL) {
             if (iter->index == -1 && iter->table == 0) {
                 if (iter->safe)
-                    dictPauseRehashing(iter->d);
-                else
+                    dictPauseRehashing(iter->d); /* pauserehash++    pauserehash>0表示rehash暂停了 */
+                else /* 如果是不安全迭代器，那么计算指纹 */
                     iter->fingerprint = dictFingerprint(iter->d);
             }
             iter->index++;
@@ -625,6 +652,7 @@ dictEntry *dictNext(dictIterator *iter)
     return NULL;
 }
 
+/* 释放给定字典迭代器 O(n) */
 void dictReleaseIterator(dictIterator *iter)
 {
     if (!(iter->index == -1 && iter->table == 0)) {
@@ -638,6 +666,7 @@ void dictReleaseIterator(dictIterator *iter)
 
 /* Return a random entry from the hash table. Useful to
  * implement randomized algorithms */
+ /* 从字典中返回一个随机节点，可用于实现随机化算法 */
 dictEntry *dictGetRandomKey(dict *d)
 {
     dictEntry *he, *orighe;
@@ -700,6 +729,7 @@ dictEntry *dictGetRandomKey(dict *d)
  * of continuous elements to run some kind of algorithm or to produce
  * statistics. However the function is much faster than dictGetRandomKey()
  * at producing N elements. */
+ /* 获取给定数量的随机节点，存储在des中，并不保证满足count */
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
     unsigned long j; /* internal hash table id, 0 or 1. */
     unsigned long tables; /* 1 or 2 tables? */

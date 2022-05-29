@@ -43,6 +43,7 @@ int ProcessingEventsWhileBlocked = 0; /* See processEventsWhileBlocked(). */
 /* Return the size consumed from the allocator, for the specified SDS string,
  * including internal fragmentation. This function is used in order to compute
  * the client output buffer size. */
+ /* 计算输出缓冲区的大小 */
 size_t sdsZmallocSize(sds s) {
     void *sh = sdsAllocPtr(s);
     return zmalloc_size(sh);
@@ -50,6 +51,7 @@ size_t sdsZmallocSize(sds s) {
 
 /* Return the amount of memory used by the sds string at object->ptr
  * for a string object. This includes internal fragmentation. */
+/* 返回 object->ptr 所指向的字符串对象所使用的内存数量。 */
 size_t getStringObjectSdsUsedMemory(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     switch(o->encoding) {
@@ -61,6 +63,7 @@ size_t getStringObjectSdsUsedMemory(robj *o) {
 
 /* Return the length of a string object.
  * This does NOT includes internal fragmentation or sds unused space. */
+/* 返回字符串对象的长度。这不包括内部碎片或sds未使用的空间 */
 size_t getStringObjectLen(robj *o) {
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
     switch(o->encoding) {
@@ -71,6 +74,7 @@ size_t getStringObjectLen(robj *o) {
 }
 
 /* Client.reply list dup and free methods. */
+/* 回复内容复制函数 */
 void *dupClientReplyValue(void *o) {
     clientReplyBlock *old = o;
     clientReplyBlock *buf = zmalloc(sizeof(clientReplyBlock) + old->size);
@@ -78,16 +82,20 @@ void *dupClientReplyValue(void *o) {
     return buf;
 }
 
+/* 释放函数 */
 void freeClientReplyValue(void *o) {
     zfree(o);
 }
 
+/* 订阅模式对比函数 */
 int listMatchObjects(void *a, void *b) {
     return equalStringObjects(a,b);
 }
 
 /* This function links the client to the global linked list of clients.
  * unlinkClient() does the opposite, among other things. */
+/*此函数用于将客户端链接到客户端的全局链接列表。
+*unlinkClient（）的作用与此相反*/
 void linkClient(client *c) {
     listAddNodeTail(server.clients,c);
     /* Note that we remember the linked list node where the client is stored,
@@ -116,7 +124,7 @@ int authRequired(client *c) {
                         !c->authenticated;
     return auth_required;
 }
-
+/* 创建一个新客户端 */
 client *createClient(connection *conn) {
     client *c = zmalloc(sizeof(client));
 

@@ -28,14 +28,27 @@ Redis中的HyperLogLog设置为：m=16834，p=6，L=16834 * 6。占用内存为=
 ```
 ***
 * **Redis中HyperLogLog**
+* **Redis 中的 HLL，虽然在技术上是一种不同的数据结构，但被编码为 Redis 字符串，可以调用`GET`以序列化 HLL，并将`SET` 其反序列化回服务器,`DEL`删除对应的hyperloglog。**
+* **基本命令：** `PFADD`,  `PFCOUNT`,`PFMERGE`
 ```
-PFADD hll1 foo bar zap a
-PFCOUNT hll1     //结果为4
-
-
-PFADD hll2 a b c foo
-PFMERGE hll3 hll1 hll2
-PFCOUNT hll3    //结果为6
+> pfadd hll1 a b c d     //如果至少 1 个 HyperLogLog 内部寄存器被更改，则为 1。否则为 0
+1
+> pfcount hll1
+4
+```
+***
+```
+> pfadd hll2 c d e f
+1
+> pfcount hll2
+4
+```
+***
+```
+> pfmerge hll3 hll1 hll2
+OK
+> pfcount hll3
+6
 ```
 
 
